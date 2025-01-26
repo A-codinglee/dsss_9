@@ -1,28 +1,43 @@
 from flask import Flask, request, jsonify
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import pipeline
+import torch
+
 app = Flask(__name__)
-model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"  # Replace with your chosen model
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForCausalLM.from_pretrained(model_name)
-@app.route('/chat', methods=['POST'])
+
+MODEL_NAME = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+
+# Initialize the pipeline for text generation
+print("Loading TinyLlama model and tokenizer. Please wait...")
+pipe = pipeline("text-generation", model=MODEL_NAME, tokenizer=MODEL_NAME, torch_dtype=torch.bfloat16, device_map="auto")
+print("Model and tokenizer loaded successfully.")
+
+@app.route("/chat", methods=["POST"])
 def chat():
     data = request.json
-    message = data.get("message", "").lower()
+    message = data.get("message", "")
+    if not message:
+        return jsonify({"error": "No message provided"}), 400
 
-    # Predefined facts about penguins
-    if "penguin" in message:
-        response = ("They live almost exclusively in the Southern Hemisphere: "
-                    "only one species, the Galápagos penguin, is found north of the Equator. "
-                    "Highly adapted for life in the ocean water, penguins have countershaded dark and white plumage and flippers for swimming."
-                    " Most penguins feed on krill, fish, squid and other forms of sea life which they catch with their bills "
-                    "and swallow whole while swimming. A penguin has a spiny tongue and powerful jaws to grip slippery prey.")
-    else:
-        # Generate response from the LLM
-        inputs = tokenizer(message, return_tensors="pt")
-        outputs = model.generate(inputs.input_ids, max_length=50)
-        response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    # Split the input into individual questions by new lines
+    questions = [q.strip() for q in message.split("\n") if q.strip()]
 
-    return jsonify({"response": response})
+    try:
+        for question in questions:
+            # Format the message as per the chat template
+            messages = [
+                {"role": "system", "content": "You are a friendly chatbot."},
+                {"role": "user", "content": question}
+            ]
+            # Apply chat template to the input
+            prompt = pipe.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+
+            outputs = pipe(prompt, max_new_tokens=256, do_sample=True, temperature=0.7, top_k=50, top_p=0.95)
+            response = outputs[0]["generated_text"]
+            split_response = response.split("<|assistant|>")[1].strip() if "<|assistant|>" in response else response.strip()
+
+        return jsonify({"response": split_response})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(port=5000)

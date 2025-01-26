@@ -5,10 +5,11 @@ bot = telebot.TeleBot("7252388314:AAHFz7n2EE0ybo2SXZR1SaXukacV8wXNC3I", parse_mo
 
 # Endpoint for your locally running LLM backend
 LLM_BACKEND_URL = "http://127.0.0.1:5000/chat"
-@bot.message_handler(commands=['start', 'help'])
+@bot.message_handler(commands=["start", "help"])
 def send_welcome(message):
-    bot.reply_to(message, "Welcome! Ask me anything.")
+    bot.reply_to(message, text="Welcome! Ask me anything.")
 
+# Handle All Other Messages
 @bot.message_handler(func=lambda message: True)
 def echo_all(message):
     user_input = message.text
@@ -25,4 +26,5 @@ def echo_all(message):
     # Send LLM's response back to the user
     bot.reply_to(message, llm_reply)
 
+# Start Polling for Messages
 bot.infinity_polling()
